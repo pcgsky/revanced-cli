@@ -37,10 +37,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # Cleaning is necessary to avoid uploading two identical artifacts with different versions
-        run: ./gradlew clean --no-daemon
+        run: ./gradlew --no-daemon
       - name: Setup semantic-release
         run: npm install
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_PUSH_ACCESS }}
         run: npm exec semantic-release
+      - name: Upload built apk
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: snapshot
+          path: |
+              ./*
