@@ -8,7 +8,6 @@ import app.revanced.patcher.PatchBundleLoader
 import app.revanced.patcher.PatchSet
 import app.revanced.patcher.Patcher
 import app.revanced.patcher.PatcherOptions
-import app.revanced.patcher.data.ResourceContext
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine
 import picocli.CommandLine.Help.Visibility.ALWAYS
@@ -35,8 +34,6 @@ internal object PatchCommand : Runnable {
 
     private var patchBundles = emptyList<File>()
 
-    private var sigLevels = setOf(1, 2, 3)
-
     @CommandLine.Option(
         names = ["-i", "--include"], description = ["List of patches to include"]
     )
@@ -60,7 +57,7 @@ internal object PatchCommand : Runnable {
     private var exclusive = false
 
     @CommandLine.Option(
-        names = ["-f", "--force"],
+        names = ["-f","--force"],
         description = ["Bypass compatibility checks for the supplied APK's version"],
         showDefaultValue = ALWAYS
     )
@@ -180,24 +177,6 @@ internal object PatchCommand : Runnable {
         this.aaptBinaryPath = aaptBinaryPath
     }
 
-    @CommandLine.Option(
-        names = ["--sig-level"],
-        description = ["Output apk signing level"],
-        split = ",",
-        defaultValue = "1,2,3",
-        showDefaultValue = ALWAYS
-    )
-    @Suppress("unused")
-    private fun setSigLevels(sigLevelsArray: Array<Int>) {
-        val sigLevels = sigLevelsArray.toSet()
-        if (sigLevels.isEmpty() || !listOf(1, 2, 3).containsAll(sigLevels))
-            throw CommandLine.ParameterException(
-                spec.commandLine(),
-                "Signing levels ${sigLevelsArray.joinToString(",")} invalid"
-            )
-        this.sigLevels = sigLevels
-    }
-
     override fun run() {
         val adbManager = deviceSerial?.let { serial -> AdbManager.getAdbManager(serial, mount) }
 
@@ -219,14 +198,14 @@ internal object PatchCommand : Runnable {
 
         // endregion
 
-        val patcherOptions = PatcherOptions(
-            apk,
-            resourceCachePath,
-            aaptBinaryPath?.path,
-            resourceCachePath.absolutePath,
-            shortenResourcePaths = true,
-        )
-        Patcher(patcherOptions).use { patcher ->
+        Patcher(
+            PatcherOptions(
+                apk,
+                resourceCachePath,
+                aaptBinaryPath?.path,
+                resourceCachePath.absolutePath,
+            )
+        ).use { patcher ->
             val filteredPatches = patcher.filterPatchSelection(patches).also { patches ->
                 logger.info("Setting patch options")
 
@@ -258,12 +237,7 @@ internal object PatchCommand : Runnable {
             // region Save
 
             val tempFile = resourceCachePath.resolve(apk.name).apply {
-                ApkUtils.copyAligned(
-                    apk,
-                    this,
-                    patcherResult,
-                    ignoreRes = patcherOptions.resourceDecodingMode == ResourceContext.ResourceDecodingMode.FULL,
-                )
+                ApkUtils.copyAligned(apk, this, patcherResult)
             }
 
             val keystoreFilePath = keystoreFilePath ?: outputFilePath.absoluteFile.parentFile
@@ -277,8 +251,7 @@ internal object PatchCommand : Runnable {
                     keyStorePassword,
                     alias,
                     password,
-                    signer,
-                    sigLevels,
+                    signer
                 )
             )
 
@@ -330,8 +303,8 @@ internal object PatchCommand : Runnable {
                     )
                 } ?: return@patch logger.fine(
                     "$patchName is incompatible with $packageName. "
-                            + "This patch is only compatible with "
-                            + packages.joinToString(", ") { `package` -> `package`.name })
+                        + "This patch is only compatible with "
+                        + packages.joinToString(", ") { `package` -> `package`.name })
 
                 return@let
             } ?: logger.fine("$patchName has no constraint on packages.")
